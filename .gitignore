@@ -11,10 +11,15 @@ lerna-debug.log*
 data/
 uploads/
 
-# Dependencies
+# Dependencies & Builds
 node_modules/
 dist/
 dist-ssr/
+dist-server/
+dist-installer/
+release/
+*.exe
+*.blockmap
 *.local
 
 # Environment variables & secrets
