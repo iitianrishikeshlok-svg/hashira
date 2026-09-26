@@ -1,7 +1,16 @@
-export default function handler(req, res) {
-  res.status(200).json({
-    status: 'healthy',
-    system: 'VisualMind AI Knowledge Extraction Engine (Vercel Serverless)',
-    timestamp: new Date().toISOString(),
-  });
+export default async function handler(req, res) {
+  try {
+    const mod = await import('./index.js');
+    res.status(200).json({
+      status: 'healthy',
+      hasDefault: Boolean(mod.default),
+      type: typeof mod.default,
+      keys: Object.keys(mod),
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: err.message,
+      stack: err.stack,
+    });
+  }
 }
