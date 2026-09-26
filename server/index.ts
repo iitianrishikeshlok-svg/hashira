@@ -74,4 +74,9 @@ if (!process.env.VERCEL) {
   });
 }
 
-export default app;
+const handler = (req: any, res: any) => {
+  return app(req, res);
+};
+
+export { app };
+export default handler;

@@ -7,7 +7,12 @@ import { createRequire } from 'module';
 import type { ExtractedPage, AcademicDomain } from '../../../shared/schema';
 
 const require = createRequire(import.meta.url);
-const pdfParsePkg = require('pdf-parse');
+let pdfParsePkg: any = null;
+try {
+  pdfParsePkg = require('pdf-parse');
+} catch (e: any) {
+  console.warn('⚠️ pdf-parse load deferred:', e?.message || e);
+}
 
 export class ParserService {
   /**

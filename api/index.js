@@ -17,7 +17,12 @@ import { v4 as uuidv4 } from "uuid";
 import JSZip from "jszip";
 import { createRequire } from "module";
 var require2 = createRequire(import.meta.url);
-var pdfParsePkg = require2("pdf-parse");
+var pdfParsePkg = null;
+try {
+  pdfParsePkg = require2("pdf-parse");
+} catch (e) {
+  console.warn("\u26A0\uFE0F pdf-parse load deferred:", e?.message || e);
+}
 var ParserService = class {
   /**
    * Parse either PDF or PPTX buffer into structured ExtractedPage array
@@ -1664,7 +1669,11 @@ if (!process.env.VERCEL) {
     console.log(`====================================================`);
   });
 }
-var index_default = app;
+var handler = (req, res) => {
+  return app(req, res);
+};
+var index_default = handler;
 export {
+  app,
   index_default as default
 };
