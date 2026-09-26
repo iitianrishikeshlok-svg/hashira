@@ -1640,7 +1640,8 @@ app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 app.use("/api/v1", apiRouter);
 app.use("/api", apiRouter);
-app.get("/health", (_req, res) => {
+app.use("/v1", apiRouter);
+app.get(["/health", "/api/health"], (_req, res) => {
   res.json({
     status: "healthy",
     system: "VisualMind AI Knowledge Extraction Engine",

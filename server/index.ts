@@ -35,12 +35,13 @@ app.use(
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
-// RESTful API Routes
+// RESTful API Routes (multi-prefix for serverless rewrite compatibility)
 app.use('/api/v1', apiRouter);
 app.use('/api', apiRouter);
+app.use('/v1', apiRouter);
 
-// Root health check
-app.get('/health', (_req, res) => {
+// Root & API health check
+app.get(['/health', '/api/health'], (_req, res) => {
   res.json({
     status: 'healthy',
     system: 'VisualMind AI Knowledge Extraction Engine',
