@@ -38,9 +38,17 @@ if (isSupabaseConfigured) {
 }
 
 // Local mock storage for demo user and fallback records
-const DATA_DIR = path.resolve(process.cwd(), 'data');
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+import os from 'os';
+const DATA_DIR = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'visualmind-data')
+  : path.resolve(process.cwd(), 'data');
+
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+} catch (e) {
+  // Read-only filesystem safety
 }
 
 export const fallbackStorePath = path.join(DATA_DIR, 'visualmind_store.json');

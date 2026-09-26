@@ -60,16 +60,18 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`====================================================`);
-  console.log(`🧠 VisualMind AI Knowledge Extraction Engine`);
-  console.log(`🚀 Server listening on http://localhost:${PORT}`);
-  console.log(`📡 API available at http://localhost:${PORT}/api/v1`);
-  console.log(`🤖 Gemini Status: ${isGeminiConfigured ? 'API KEY ACTIVE' : 'SIMULATOR & DYNAMIC PARSER ACTIVE'}`);
-  console.log(`🗄️ Supabase Status: ${isSupabaseConfigured ? 'CONNECTED' : 'LOCAL PERSISTENT STORE ACTIVE'}`);
-  console.log(`====================================================`);
-});
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`====================================================`);
+    console.log(`🧠 VisualMind AI Knowledge Extraction Engine`);
+    console.log(`🚀 Server listening on http://localhost:${PORT}`);
+    console.log(`📡 API available at http://localhost:${PORT}/api/v1`);
+    console.log(`🤖 Gemini Status: ${isGeminiConfigured ? 'API KEY ACTIVE' : 'SIMULATOR & DYNAMIC PARSER ACTIVE'}`);
+    console.log(`🗄️ Supabase Status: ${isSupabaseConfigured ? 'CONNECTED' : 'LOCAL PERSISTENT STORE ACTIVE'}`);
+    console.log(`====================================================`);
+  });
+}
 
 export default app;
