@@ -1,0 +1,208 @@
+{
+  "workers": [
+    {
+      "id": "9f381f9a-8e2b-42ea-a4e6-8968d87532d1",
+      "user_id": "default_worker",
+      "email": "worker@remote-first.co",
+      "current_role": "Remote Senior Technical Writer",
+      "augmentation_score": 78.9,
+      "hours_saved_this_month": 35.5,
+      "created_at": "2026-09-25T11:09:49.537Z"
+    }
+  ],
+  "task_decompositions": [
+    {
+      "id": "101a319a-3f2a-4130-8f69-2eb488a5823d",
+      "worker_id": "9f381f9a-8e2b-42ea-a4e6-8968d87532d1",
+      "role_title": "Remote Senior Technical Writer",
+      "task_name": "Drafting and Synthesizing Remote Senior Technical Writer Deliverables",
+      "task_category": "AUGMENTABLE",
+      "automation_potential": 70,
+      "recommended_strategy": "Direct generative AI templates with precise intent criteria; conduct peer review on structured artifacts.",
+      "recommended_tools": [
+        "Gemini 2.5 Flash",
+        "Cursor",
+        "Notion AI",
+        "Custom System Prompts"
+      ],
+      "created_at": "2026-09-25T14:28:24.801Z"
+    },
+    {
+      "id": "1dd5233f-f47f-4eb5-8887-e729c56e34b5",
+      "worker_id": "9f381f9a-8e2b-42ea-a4e6-8968d87532d1",
+      "role_title": "Remote Senior Technical Writer",
+      "task_name": "Routine Formatting, Standardization & Boilerplate Scrubbing",
+      "task_category": "AUTOMATABLE",
+      "automation_potential": 92,
+      "recommended_strategy": "Configure automated pipeline filters and style linting rules so zero manual hours are lost on syntax.",
+      "recommended_tools": [
+        "Prettier",
+        "Python Orchestration Scripts",
+        "Gemini Batch API"
+      ],
+      "created_at": "2026-09-25T14:28:24.801Z"
+    },
+    {
+      "id": "95007664-3a9a-411f-8120-1a3c81ac421a",
+      "worker_id": "9f381f9a-8e2b-42ea-a4e6-8968d87532d1",
+      "role_title": "Remote Senior Technical Writer",
+      "task_name": "Cross-Functional Alignment, Strategic Intent & Stakeholder Nuance",
+      "task_category": "HUMAN_CORE",
+      "automation_potential": 15,
+      "recommended_strategy": "Worker exercises deep emotional intelligence, ethical discernment, and high-stakes negotiation with stakeholders.",
+      "recommended_tools": [
+        "Miro Collaboration",
+        "Antigravity IDE",
+        "Strategic Decision Logs"
+      ],
+      "created_at": "2026-09-25T14:28:24.801Z"
+    },
+    {
+      "id": "e6364bd6-1091-4987-ab6c-c8327f143bb1",
+      "worker_id": "9f381f9a-8e2b-42ea-a4e6-8968d87532d1",
+      "role_title": "Remote Senior Technical Writer",
+      "task_name": "Fact-Checking, Hallucination Prevention & Output Auditing",
+      "task_category": "AUGMENTABLE",
+      "automation_potential": 55,
+      "recommended_strategy": "Deploy automated multi-source verification checks while maintaining final human signature sign-off.",
+      "recommended_tools": [
+        "Fact-Check Scrapers",
+        "Confidence Scoring",
+        "Gemini Grounding"
+      ],
+      "created_at": "2026-09-25T14:28:24.801Z"
+    },
+    {
+      "id": "cbd47e91-af77-45c7-a5aa-0fe71791ff9d",
+      "worker_id": "9f381f9a-8e2b-42ea-a4e6-8968d87532d1",
+      "role_title": "Customer Support Lead",
+      "task_name": "Drafting and Synthesizing Customer Support Lead Deliverables",
+      "task_category": "AUGMENTABLE",
+      "automation_potential": 70,
+      "recommended_strategy": "Direct generative AI templates with precise intent criteria; conduct peer review on structured artifacts.",
+      "recommended_tools": [
+        "Gemini 2.5 Flash",
+        "Cursor",
+        "Notion AI",
+        "Custom System Prompts"
+      ],
+      "created_at": "2026-09-25T11:10:39.441Z"
+    },
+    {
+      "id": "7faab0e1-27bd-43e5-9fa5-c4cda56609e3",
+      "worker_id": "9f381f9a-8e2b-42ea-a4e6-8968d87532d1",
+      "role_title": "Customer Support Lead",
+      "task_name": "Routine Formatting, Standardization & Boilerplate Scrubbing",
+      "task_category": "AUTOMATABLE",
+      "automation_potential": 92,
+      "recommended_strategy": "Configure automated pipeline filters and style linting rules so zero manual hours are lost on syntax.",
+      "recommended_tools": [
+        "Prettier",
+        "Python Orchestration Scripts",
+        "Gemini Batch API"
+      ],
+      "created_at": "2026-09-25T11:10:39.441Z"
+    },
+    {
+      "id": "94b80e2e-d971-45af-a390-997c0042e170",
+      "worker_id": "9f381f9a-8e2b-42ea-a4e6-8968d87532d1",
+      "role_title": "Customer Support Lead",
+      "task_name": "Cross-Functional Alignment, Strategic Intent & Stakeholder Nuance",
+      "task_category": "HUMAN_CORE",
+      "automation_potential": 15,
+      "recommended_strategy": "Worker exercises deep emotional intelligence, ethical discernment, and high-stakes negotiation with stakeholders.",
+      "recommended_tools": [
+        "Miro Collaboration",
+        "Antigravity IDE",
+        "Strategic Decision Logs"
+      ],
+      "created_at": "2026-09-25T11:10:39.441Z"
+    },
+    {
+      "id": "4c5c3d88-d88d-4459-a917-a8c9f0bcf96b",
+      "worker_id": "9f381f9a-8e2b-42ea-a4e6-8968d87532d1",
+      "role_title": "Customer Support Lead",
+      "task_name": "Fact-Checking, Hallucination Prevention & Output Auditing",
+      "task_category": "AUGMENTABLE",
+      "automation_potential": 55,
+      "recommended_strategy": "Deploy automated multi-source verification checks while maintaining final human signature sign-off.",
+      "recommended_tools": [
+        "Fact-Check Scrapers",
+        "Confidence Scoring",
+        "Gemini Grounding"
+      ],
+      "created_at": "2026-09-25T11:10:39.441Z"
+    },
+    {
+      "id": "b0c5c502-975c-4b51-bf3c-c8465aff7ba8",
+      "worker_id": "9f381f9a-8e2b-42ea-a4e6-8968d87532d1",
+      "role_title": "Remote Senior Technical Writer",
+      "task_name": "API Reference Documentation Maintenance",
+      "task_category": "AUGMENTABLE",
+      "automation_potential": 65,
+      "recommended_strategy": "Use OpenAPI diff analyzer with Gemini 2.5 Flash to synthesize breaking change logs.",
+      "recommended_tools": [
+        "Gemini 2.5 Flash",
+        "Swagger Parser",
+        "GitHub Actions"
+      ],
+      "created_at": "2026-09-23T11:09:49.538Z"
+    },
+    {
+      "id": "6fd7352a-5042-4d1a-b43e-e067ac58757b",
+      "worker_id": "9f381f9a-8e2b-42ea-a4e6-8968d87532d1",
+      "role_title": "Remote Senior Technical Writer",
+      "task_name": "Format Conversion & Markdown Linting",
+      "task_category": "AUTOMATABLE",
+      "automation_potential": 90,
+      "recommended_strategy": "Automated pre-commit LLM style transformer to reformat raw engineering notes.",
+      "recommended_tools": [
+        "Vale Linter",
+        "Prettier",
+        "Custom Script"
+      ],
+      "created_at": "2026-09-22T11:09:49.538Z"
+    },
+    {
+      "id": "70d5010e-f6b3-406d-a004-66cd9f53ca88",
+      "worker_id": "9f381f9a-8e2b-42ea-a4e6-8968d87532d1",
+      "role_title": "Remote Senior Technical Writer",
+      "task_name": "Developer Information Architecture & User Empathy Review",
+      "task_category": "HUMAN_CORE",
+      "automation_potential": 20,
+      "recommended_strategy": "Human orchestrator retains total design authority over reader journey & conceptual clarity.",
+      "recommended_tools": [
+        "Miro",
+        "User Interviews",
+        "Antigravity IDE"
+      ],
+      "created_at": "2026-09-21T11:09:49.538Z"
+    }
+  ],
+  "co_execution_sessions": [
+    {
+      "id": "77bb5aef-6a11-44a6-b315-79fb0ff860b5",
+      "worker_id": "9f381f9a-8e2b-42ea-a4e6-8968d87532d1",
+      "task_name": "Quarterly API Deprecation Notice",
+      "input_intent": "Synthesize 35 breaking PR changes into customer migration docs",
+      "generated_prompt": "### ROLE & OBJECTIVE...",
+      "ai_output": "Executive Summary...",
+      "audit_checklist_completed": 4,
+      "audit_checklist_total": 4,
+      "time_saved_minutes": 90,
+      "created_at": "2026-09-25T11:11:43.514Z"
+    },
+    {
+      "id": "c49f37b2-f1f4-4fc1-afd0-43248d3766c8",
+      "worker_id": "9f381f9a-8e2b-42ea-a4e6-8968d87532d1",
+      "task_name": "Q3 Release Changelog Synthesis",
+      "input_intent": "Condense 42 merged PRs into a clean, stakeholder-ready release summary highlighting breaking changes.",
+      "generated_prompt": "Act as a Lead Developer Relations Engineer. Synthesize the provided git commit list into 3 sections...",
+      "ai_output": "### Release 3.4.0 Highlights\n- **Breaking:** Authentication token format upgraded to JWT v2.\n- **New:** Co-execution agent endpoints added.\n- **Fixes:** 14 minor stability patches.",
+      "audit_checklist_completed": 4,
+      "audit_checklist_total": 4,
+      "time_saved_minutes": 120,
+      "created_at": "2026-09-24T11:09:49.538Z"
+    }
+  ]
+}
