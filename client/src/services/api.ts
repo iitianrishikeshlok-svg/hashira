@@ -11,7 +11,10 @@ import type {
   AcademicDomain,
 } from '../../../shared/schema';
 
-const API_BASE = '/api/v1';
+const API_SERVER = import.meta.env.VITE_API_URL 
+  ? String(import.meta.env.VITE_API_URL).replace(/\/+$/, '') 
+  : '';
+const API_BASE = `${API_SERVER}/api/v1`;
 
 function getAuthHeader(): Record<string, string> {
   const token = localStorage.getItem('visualmind_token') || 'demo-token';
