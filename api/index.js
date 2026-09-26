@@ -15,6 +15,7 @@ import { v4 as uuidv4 } from "uuid";
 
 // server/src/services/parserService.ts
 import JSZip from "jszip";
+import zlib from "zlib";
 import { createRequire } from "module";
 var require2 = createRequire(import.meta.url);
 var pdfParsePkg = null;
@@ -111,63 +112,113 @@ var ParserService = class {
     }
   }
   /**
-   * Extract pages and text from PDF using modern PDFParse or legacy fallback
+   * Extract pages and text from PDF using Mozilla pdfjs-dist, pdf-parse, or stream decompression
    */
   static async parsePdf(buffer, fileName) {
     try {
       const pages = [];
-      if (pdfParsePkg && pdfParsePkg.PDFParse) {
-        const parser = new pdfParsePkg.PDFParse({ data: buffer });
-        const result = await parser.getText();
-        await parser.destroy().catch(() => {
-        });
-        if (result && Array.isArray(result.pages) && result.pages.length > 0) {
-          result.pages.forEach((p, idx) => {
-            const text = (p.text || "").trim();
-            if (text.length > 0) {
-              const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
-              const title = lines.length > 0 && lines[0].length < 120 ? lines[0] : `Page ${p.num || idx + 1}: ${fileName.replace(/\.pdf$/i, "")}`;
-              pages.push({
-                page: p.num || idx + 1,
-                title,
-                content: lines.slice(1).join("\n") || text
+      try {
+        const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        const uint8Array = new Uint8Array(buffer);
+        const doc = await pdfjs.getDocument({
+          data: uint8Array,
+          useSystemFonts: true,
+          disableFontFace: true
+        }).promise;
+        const numPages = doc.numPages;
+        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+          const page = await doc.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          const rawItems = textContent.items.map((item) => (item.str || "").trim()).filter((str) => str.length > 0);
+          if (rawItems.length > 0) {
+            const fullText = rawItems.join(" ");
+            const titleCandidates = rawItems.filter(
+              (t) => t.length > 3 && t.length < 80 && !/^\d+$/.test(t) && !t.includes("1 0 obj")
+            );
+            const title = titleCandidates.length > 0 ? titleCandidates[0] : `Page ${pageNum}: ${fileName.replace(/\.pdf$/i, "")}`;
+            pages.push({
+              page: pageNum,
+              title,
+              content: fullText
+            });
+          }
+        }
+      } catch (pdfjsErr) {
+        console.warn("pdfjs-dist extraction note:", pdfjsErr?.message || pdfjsErr);
+      }
+      if (pages.length === 0 && pdfParsePkg) {
+        try {
+          if (pdfParsePkg.PDFParse) {
+            const parser = new pdfParsePkg.PDFParse({ data: buffer });
+            const result = await parser.getText();
+            await parser.destroy().catch(() => {
+            });
+            if (result && Array.isArray(result.pages) && result.pages.length > 0) {
+              result.pages.forEach((p, idx) => {
+                const text = (p.text || "").trim();
+                if (text.length > 0) {
+                  const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+                  const title = lines.length > 0 && lines[0].length < 100 ? lines[0] : `Page ${p.num || idx + 1}: ${fileName.replace(/\.pdf$/i, "")}`;
+                  pages.push({
+                    page: p.num || idx + 1,
+                    title,
+                    content: lines.slice(1).join("\n") || text
+                  });
+                }
               });
             }
-          });
-        } else if (result && result.text) {
-          const rawPages = result.text.split(/\f|\x0c/).filter((p) => p.trim().length > 0);
-          rawPages.forEach((pageContent, idx) => {
-            const lines = pageContent.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
-            const title = lines.length > 0 && lines[0].length < 120 ? lines[0] : `Page ${idx + 1}: ${fileName.replace(/\.pdf$/i, "")}`;
-            pages.push({
-              page: idx + 1,
-              title,
-              content: lines.slice(1).join("\n") || pageContent
+          } else if (typeof pdfParsePkg === "function") {
+            const data = await pdfParsePkg(buffer);
+            const rawText = data.text || "";
+            const rawPages = rawText.split(/\f|\x0c/).filter((p) => p.trim().length > 0);
+            rawPages.forEach((pageContent, idx) => {
+              const lines = pageContent.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+              pages.push({
+                page: idx + 1,
+                title: lines[0] || `Page ${idx + 1}: ${fileName.replace(/\.pdf$/i, "")}`,
+                content: lines.slice(1).join("\n") || pageContent
+              });
             });
-          });
+          }
+        } catch (e) {
         }
-      } else if (typeof pdfParsePkg === "function") {
-        const data = await pdfParsePkg(buffer);
-        const rawText = data.text || "";
-        const rawPages = rawText.split(/\f|\x0c/).filter((p) => p.trim().length > 0);
-        rawPages.forEach((pageContent, idx) => {
-          const lines = pageContent.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
-          const title = lines.length > 0 && lines[0].length < 120 ? lines[0] : `Page ${idx + 1}: ${fileName.replace(/\.pdf$/i, "")}`;
-          pages.push({
-            page: idx + 1,
-            title,
-            content: lines.slice(1).join("\n") || pageContent
-          });
-        });
+      }
+      if (pages.length === 0) {
+        try {
+          const bufferStr = buffer.toString("binary");
+          const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/gi;
+          let match;
+          const textTokens = [];
+          while ((match = streamRegex.exec(bufferStr)) !== null) {
+            try {
+              const compressedBytes = Buffer.from(match[1], "binary");
+              const decompressed = zlib.inflateSync(compressedBytes).toString("utf-8");
+              const textMatches = decompressed.match(/\(([^)]+)\)\s*Tj/g);
+              if (textMatches) {
+                const chunk = textMatches.map((m) => m.replace(/^\(|\)\s*Tj$/g, "")).join(" ");
+                if (chunk.trim().length > 10) textTokens.push(chunk.trim());
+              }
+            } catch (zlibErr) {
+            }
+          }
+          if (textTokens.length > 0) {
+            pages.push({
+              page: 1,
+              title: fileName.replace(/\.pdf$/i, "").replace(/[-_]/g, " "),
+              content: textTokens.join("\n\n")
+            });
+          }
+        } catch (streamErr) {
+        }
       }
       if (pages.length === 0) {
         const rawString = buffer.toString("utf-8");
-        const textSnippets = rawString.match(/[A-Za-z0-9 ,.;:!?'"()\-\n]{30,}/g) || [];
-        const content = textSnippets.slice(0, 50).join("\n") || "Academic document contents ingested for extraction.";
+        const cleanLines = rawString.replace(/%PDF[\s\S]*?obj/gi, "").replace(/<<[\s\S]*?>>/gi, "").replace(/endobj/gi, "").replace(/xref[\s\S]*?trailer/gi, "").split("\n").map((l) => l.trim()).filter((l) => l.length > 15 && !l.includes("ReportLab") && !l.includes("Producer") && !l.includes("CreationDate"));
+        const meaningfulText = cleanLines.slice(0, 40).join("\n");
         pages.push({
           page: 1,
-          title: fileName.replace(/\.pdf$/i, ""),
-          content
+          title: fileName.replace(/\.pdf$/i, "").replace(/[-_]/g, " "),
+          content: meaningfulText || `Academic study material: ${fileName.replace(/\.pdf$/i, "")}`
         });
       }
       const detectedDomain = this.detectAcademicDomain(pages);
@@ -665,8 +716,9 @@ var isGeminiConfigured = Boolean(
   apiKey && apiKey.trim().length >= 20 && !apiKey.includes("...") && !apiKey.includes("your_") && apiKey !== "++" && !apiKey.startsWith("++")
 );
 var ai = isGeminiConfigured ? new GoogleGenAI({ apiKey: apiKey.trim() }) : new GoogleGenAI({ apiKey: "dummy-key-for-initialization" });
-var GEMINI_MODEL_FAST = "gemini-2.5-flash";
-var GEMINI_MODEL_PRO = "gemini-2.5-pro";
+var GEMINI_MODEL_FAST = "gemini-3.5-flash";
+var GEMINI_MODEL_PRO = "gemini-3.5-flash";
+var CANDIDATE_GEMINI_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite"];
 if (isGeminiConfigured) {
   console.log(`\u{1F916} Google Gen AI (@google/genai) initialized with ${GEMINI_MODEL_FAST} / ${GEMINI_MODEL_PRO}`);
 } else {
@@ -780,56 +832,59 @@ var AIService = class {
   static async extractKnowledgeMap(extractedPages, options) {
     const { diagramType, granularity, focusArea, detectedDomain } = options;
     if (isGeminiConfigured) {
-      try {
-        console.log(`\u{1F9E0} Invoking Gemini 2.5 Flash for ${diagramType} extraction (${granularity})...`);
-        const condensedPages = extractedPages.map((p) => ({
-          slide_or_page: p.page,
-          title: p.title,
-          excerpt: p.content.slice(0, 800),
-          notes: p.notes?.slice(0, 300)
-        }));
-        let userPrompt = `Analyze the following lecture transcript (extracted page-by-page) and generate a structured ${diagramType} knowledge map.
+      for (const modelName of CANDIDATE_GEMINI_MODELS) {
+        try {
+          console.log(`\u{1F9E0} Invoking ${modelName} for ${diagramType} extraction (${granularity})...`);
+          const condensedPages = extractedPages.map((p) => ({
+            slide_or_page: p.page,
+            title: p.title,
+            excerpt: p.content.slice(0, 800),
+            notes: p.notes?.slice(0, 300)
+          }));
+          let userPrompt = `Analyze the following lecture transcript (extracted page-by-page) and generate a structured ${diagramType} knowledge map.
 Target detail level: ${granularity}.
 Target Diagram Format: ${this.getDiagramPromptFormat(diagramType)}.`;
-        if (focusArea) {
-          userPrompt += `
+          if (focusArea) {
+            userPrompt += `
 SPECIAL FOCUS AREA: Focus deeply on: "${focusArea}".`;
-        }
-        userPrompt += `
+          }
+          userPrompt += `
 
 DOCUMENT TRANSCRIPT:
 ${JSON.stringify(condensedPages, null, 2)}`;
-        const response = await ai.models.generateContent({
-          model: GEMINI_MODEL_FAST,
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: userPrompt }]
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: [
+              {
+                role: "user",
+                parts: [{ text: userPrompt }]
+              }
+            ],
+            config: {
+              systemInstruction: AI_SYSTEM_PROMPT,
+              responseMimeType: "application/json",
+              responseSchema: knowledgeExtractionSchema,
+              temperature: 0.2
             }
-          ],
-          config: {
-            systemInstruction: AI_SYSTEM_PROMPT,
-            responseMimeType: "application/json",
-            responseSchema: knowledgeExtractionSchema,
-            temperature: 0.2
-          }
-        });
-        const rawJson = response.text || "";
-        const parsed = JSON.parse(rawJson);
-        const sanitizedMermaid = this.sanitizeMermaidCode(parsed.mermaidCode, diagramType, parsed.nodes);
-        return {
-          title: parsed.title || "Extracted Knowledge Map",
-          academicDomain: parsed.academicDomain || detectedDomain || "GENERAL_ACADEMIC",
-          mermaidCode: sanitizedMermaid,
-          nodes: parsed.nodes || [],
-          cheatsheet: {
-            coreDefinitions: parsed.cheatsheet?.coreDefinitions || [],
-            keyFormulas: parsed.cheatsheet?.keyFormulas || [],
-            keyTakeaways: parsed.cheatsheet?.keyTakeaways || []
-          }
-        };
-      } catch (err) {
-        console.warn("\u26A0\uFE0F Gemini live call failed or encountered rate limits. Using resilient knowledge generator:", err.message);
+          });
+          const rawJson = response.text || "";
+          if (!rawJson) continue;
+          const parsed = JSON.parse(rawJson);
+          const sanitizedMermaid = this.sanitizeMermaidCode(parsed.mermaidCode, diagramType, parsed.nodes);
+          return {
+            title: parsed.title || "Extracted Knowledge Map",
+            academicDomain: parsed.academicDomain || detectedDomain || "GENERAL_ACADEMIC",
+            mermaidCode: sanitizedMermaid,
+            nodes: parsed.nodes || [],
+            cheatsheet: {
+              coreDefinitions: parsed.cheatsheet?.coreDefinitions || [],
+              keyFormulas: parsed.cheatsheet?.keyFormulas || [],
+              keyTakeaways: parsed.cheatsheet?.keyTakeaways || []
+            }
+          };
+        } catch (err) {
+          console.warn(`\u26A0\uFE0F Gemini ${modelName} call failed (${err.status || err.message}). Trying next candidate...`);
+        }
       }
     }
     return this.generateSynthesizedKnowledgeMap(extractedPages, options);
@@ -839,15 +894,16 @@ ${JSON.stringify(condensedPages, null, 2)}`;
    */
   static async generateQuiz(mapTitle, nodes, cheatsheet, questionCount = 5) {
     if (isGeminiConfigured) {
-      try {
-        const response = await ai.models.generateContent({
-          model: GEMINI_MODEL_FAST,
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: `Generate a challenging ${questionCount}-question active recall multiple-choice quiz based on the following concepts and formulas from the knowledge map "${mapTitle}".
+      for (const modelName of CANDIDATE_GEMINI_MODELS) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  {
+                    text: `Generate a challenging ${questionCount}-question active recall multiple-choice quiz based on the following concepts and formulas from the knowledge map "${mapTitle}".
 Each question must test conceptual comprehension, not rote memorization.
 Link each question to the most relevant node ID.
 
@@ -856,24 +912,26 @@ ${JSON.stringify(nodes.slice(0, 15), null, 2)}
 
 DEFINITIONS & FORMULAS:
 ${JSON.stringify(cheatsheet, null, 2)}`
-                }
-              ]
+                  }
+                ]
+              }
+            ],
+            config: {
+              systemInstruction: "You are an expert university examiner creating high-retention active recall assessment questions.",
+              responseMimeType: "application/json",
+              responseSchema: quizGenerationSchema,
+              temperature: 0.3
             }
-          ],
-          config: {
-            systemInstruction: "You are an expert university examiner creating high-retention active recall assessment questions.",
-            responseMimeType: "application/json",
-            responseSchema: quizGenerationSchema,
-            temperature: 0.3
+          });
+          const raw = response.text || "";
+          if (!raw) continue;
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+            return parsed.questions;
           }
-        });
-        const raw = response.text || "";
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.questions) && parsed.questions.length > 0) {
-          return parsed.questions;
+        } catch (err) {
+          console.warn(`\u26A0\uFE0F Gemini quiz on ${modelName} failed (${err.status || err.message}). Trying next candidate...`);
         }
-      } catch (err) {
-        console.warn("\u26A0\uFE0F Gemini quiz generation fallback:", err.message);
       }
     }
     return this.generateSynthesizedQuiz(mapTitle, nodes, cheatsheet, questionCount);
@@ -924,26 +982,59 @@ ${code}`;
     const domain = options.detectedDomain || "ENGINEERING_CS";
     const firstPage = pages[0] || { page: 1, title: "Document", content: "" };
     const docTitle = firstPage.title.replace(/^Slide \d+:\s*/i, "").replace(/^Page \d+:\s*/i, "");
-    const targetNodeCount = options.granularity === "concise" ? 6 : options.granularity === "detailed" ? 14 : 9;
-    const nodes = [];
-    const usedPages = pages.slice(0, Math.min(pages.length, targetNodeCount));
-    usedPages.forEach((p, idx) => {
-      const id = `node${String.fromCharCode(65 + idx % 26)}${idx >= 26 ? idx : ""}`;
-      const label = p.title.slice(0, 45).replace(/[\[\]\(\)\"]/g, "");
-      const summary = p.content.slice(0, 180).trim() || `Core conceptual foundation presented on slide ${p.page}.`;
-      nodes.push({
-        id,
-        label: label || `Concept ${idx + 1}`,
-        summary: `${summary} (Derived from slide ${p.page}).`,
-        sourceRefs: [p.page]
+    const targetNodeCount = options.granularity === "concise" ? 5 : options.granularity === "detailed" ? 12 : 8;
+    const candidateItems = [];
+    pages.forEach((p) => {
+      const pTitle = p.title.replace(/^Slide \d+:\s*/i, "").replace(/^Page \d+:\s*/i, "").replace(/[\[\]\(\)\"]/g, "").trim();
+      if (pTitle && pTitle.length >= 4 && !pTitle.toLowerCase().includes("reportlab") && !pTitle.includes("1 0 obj") && !candidateItems.some((it) => it.label.toLowerCase() === pTitle.toLowerCase())) {
+        candidateItems.push({
+          label: pTitle.slice(0, 45),
+          summary: p.content.slice(0, 200).trim(),
+          page: p.page
+        });
+      }
+      const contentParts = p.content.split(/(?:\r?\n){2,}|(?<=[.?!])\s+(?=[A-Z0-9])|(?=\b(?:Problem|Question|Q\d|Step|Section|Part|\d+[\.\)])\b)/i).map((s) => s.trim()).filter((s) => s.length > 20 && !s.includes("ReportLab") && !s.includes("CreationDate"));
+      contentParts.forEach((part) => {
+        const words = part.split(/\s+/).slice(0, 5).join(" ");
+        const label = words.replace(/[#*\-–:\[\]\(\)\"]/g, "").trim();
+        if (label.length >= 4 && label.length <= 40 && !label.toLowerCase().includes("stream") && !candidateItems.some((it) => it.label.toLowerCase() === label.toLowerCase())) {
+          candidateItems.push({
+            label,
+            summary: part.slice(0, 220).trim(),
+            page: p.page
+          });
+        }
       });
     });
+    const nodes = [];
+    const chosenItems = candidateItems.slice(0, targetNodeCount);
+    if (chosenItems.length > 0) {
+      chosenItems.forEach((item, idx) => {
+        const id = `node${String.fromCharCode(65 + idx % 26)}${idx >= 26 ? idx : ""}`;
+        nodes.push({
+          id,
+          label: item.label,
+          summary: item.summary ? `${item.summary} (Page ${item.page})` : `Key conceptual point for ${item.label}.`,
+          sourceRefs: [item.page]
+        });
+      });
+    }
     if (nodes.length < 3) {
-      nodes.push(
-        { id: "nodeA", label: "Primary Architecture", summary: "Foundational framework and domain mechanics.", sourceRefs: [1] },
-        { id: "nodeB", label: "Core Mechanism", summary: "Algorithmic execution logic and state transitions.", sourceRefs: [1] },
-        { id: "nodeC", label: "Optimization & Analysis", summary: "Performance guarantees and throughput characteristics.", sourceRefs: [1] }
-      );
+      const cleanTitle = docTitle.replace(/[-_]/g, " ").trim() || "Document";
+      const fallbackThemes = [
+        { label: `${cleanTitle} Overview`, desc: `Foundational principles and problem formulation for ${cleanTitle}.` },
+        { label: `${cleanTitle} Methodology`, desc: `Step-by-step conversion, calculation, or execution rules.` },
+        { label: `${cleanTitle} Practice Applications`, desc: `Practical problem solutions, edge cases, and verification.` }
+      ];
+      fallbackThemes.forEach((th, idx) => {
+        const id = `node${String.fromCharCode(65 + idx)}`;
+        nodes.push({
+          id,
+          label: th.label.slice(0, 45),
+          summary: th.desc,
+          sourceRefs: [1]
+        });
+      });
     }
     let mermaidCode = "";
     if (options.diagramType === "flowchart") {
@@ -992,37 +1083,30 @@ ${seq}`;
       mermaidCode = `stateDiagram-v2
 ${states}`;
     }
+    const coreDefinitions = nodes.slice(0, 4).map((n) => ({
+      term: n.label,
+      definition: n.summary.split(". ")[0] || `Key rule and principle in ${docTitle}.`
+    }));
+    const fullText = pages.map((p) => p.content).join(" ");
+    const formulaMatches = fullText.match(/([A-Za-z0-9_+\-*\/^= ]{3,25}\s*=\s*[A-Za-z0-9_+\-*\/^= ]{2,25})/g) || [];
+    const keyFormulas = formulaMatches.length > 0 ? formulaMatches.slice(0, 3).map((f, i) => ({
+      name: `Formula ${i + 1}`,
+      formula: f.trim(),
+      context: `Derived from ${docTitle}`
+    })) : [
+      {
+        name: `${docTitle} Formula`,
+        formula: domain === "ENGINEERING_CS" ? "Value = Sum(Digit_i * Radix^i)" : "Efficiency = Output / Input",
+        context: `Mathematical representation for ${docTitle}.`
+      }
+    ];
     const cheatsheet = {
-      coreDefinitions: [
-        {
-          term: nodes[0]?.label || "System Model",
-          definition: `Core operational paradigm defining entities, transitions, and constraints within the study material.`
-        },
-        {
-          term: "Throughput & Efficiency",
-          definition: "Metric quantifying effective work completed per unit time across operational cycles."
-        },
-        {
-          term: "Convergence Property",
-          definition: "Mathematical assurance that iterative stages terminate at an optimal stable configuration."
-        }
-      ],
-      keyFormulas: [
-        {
-          name: "Average Efficiency Index",
-          formula: "E = (Work_Completed / Total_Allocated_Time) * 100%",
-          context: "Used to measure system utilization across algorithmic phases."
-        },
-        {
-          name: "Latency Ratio",
-          formula: "L = Response_Time / Minimum_Feasible_Time",
-          context: "Determines overhead introduced during state transitions."
-        }
-      ],
+      coreDefinitions,
+      keyFormulas,
       keyTakeaways: [
-        `Mastery of ${docTitle} hinges on understanding transitions between early stages and optimization phases.`,
-        `Every node is mathematically grounded in lecture material referenced by source page indicators.`,
-        `Review the active recall quiz to verify retention of sequential algorithms.`
+        `Mastery of ${docTitle} requires understanding the relationships between ${nodes.map((n) => n.label).slice(0, 3).join(", ")}.`,
+        `Refer to source slide references ${nodes.map((n) => n.sourceRefs[0]).join(", ")} for full theoretical context.`,
+        `Complete the active recall assessment to reinforce conceptual memory.`
       ]
     };
     return {

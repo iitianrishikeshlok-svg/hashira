@@ -23,8 +23,9 @@ export const ai = isGeminiConfigured
   : new GoogleGenAI({ apiKey: 'dummy-key-for-initialization' });
 
 // Default models to use across system
-export const GEMINI_MODEL_FAST = 'gemini-2.5-flash';
-export const GEMINI_MODEL_PRO = 'gemini-2.5-pro';
+export const GEMINI_MODEL_FAST = 'gemini-3.5-flash';
+export const GEMINI_MODEL_PRO = 'gemini-3.5-flash';
+export const CANDIDATE_GEMINI_MODELS = ['gemini-3.5-flash', 'gemini-3.5-flash-lite'];
 
 if (isGeminiConfigured) {
   console.log(`🤖 Google Gen AI (@google/genai) initialized with ${GEMINI_MODEL_FAST} / ${GEMINI_MODEL_PRO}`);

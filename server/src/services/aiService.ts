@@ -3,7 +3,7 @@
 // AI Knowledge Extraction Engine & Quiz Generator with @google/genai
 // ============================================================================
 import { Type, Schema } from '@google/genai';
-import { ai, isGeminiConfigured, GEMINI_MODEL_FAST } from '../lib/gemini';
+import { ai, isGeminiConfigured, GEMINI_MODEL_FAST, CANDIDATE_GEMINI_MODELS } from '../lib/gemini';
 import type {
   ExtractedPage,
   AcademicDomain,
@@ -140,62 +140,65 @@ export class AIService {
     const { diagramType, granularity, focusArea, detectedDomain } = options;
 
     if (isGeminiConfigured) {
-      try {
-        console.log(`🧠 Invoking Gemini 2.5 Flash for ${diagramType} extraction (${granularity})...`);
+      for (const modelName of CANDIDATE_GEMINI_MODELS) {
+        try {
+          console.log(`🧠 Invoking ${modelName} for ${diagramType} extraction (${granularity})...`);
 
-        // Prepare condensed transcript to optimize tokens while retaining structural accuracy
-        const condensedPages = extractedPages.map((p) => ({
-          slide_or_page: p.page,
-          title: p.title,
-          excerpt: p.content.slice(0, 800),
-          notes: p.notes?.slice(0, 300),
-        }));
+          // Prepare condensed transcript to optimize tokens while retaining structural accuracy
+          const condensedPages = extractedPages.map((p) => ({
+            slide_or_page: p.page,
+            title: p.title,
+            excerpt: p.content.slice(0, 800),
+            notes: p.notes?.slice(0, 300),
+          }));
 
-        let userPrompt = `Analyze the following lecture transcript (extracted page-by-page) and generate a structured ${diagramType} knowledge map.
+          let userPrompt = `Analyze the following lecture transcript (extracted page-by-page) and generate a structured ${diagramType} knowledge map.
 Target detail level: ${granularity}.
 Target Diagram Format: ${this.getDiagramPromptFormat(diagramType)}.`;
 
-        if (focusArea) {
-          userPrompt += `\nSPECIAL FOCUS AREA: Focus deeply on: "${focusArea}".`;
-        }
+          if (focusArea) {
+            userPrompt += `\nSPECIAL FOCUS AREA: Focus deeply on: "${focusArea}".`;
+          }
 
-        userPrompt += `\n\nDOCUMENT TRANSCRIPT:\n${JSON.stringify(condensedPages, null, 2)}`;
+          userPrompt += `\n\nDOCUMENT TRANSCRIPT:\n${JSON.stringify(condensedPages, null, 2)}`;
 
-        const response = await ai.models.generateContent({
-          model: GEMINI_MODEL_FAST,
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: userPrompt }],
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: userPrompt }],
+              },
+            ],
+            config: {
+              systemInstruction: AI_SYSTEM_PROMPT,
+              responseMimeType: 'application/json',
+              responseSchema: knowledgeExtractionSchema,
+              temperature: 0.2,
             },
-          ],
-          config: {
-            systemInstruction: AI_SYSTEM_PROMPT,
-            responseMimeType: 'application/json',
-            responseSchema: knowledgeExtractionSchema,
-            temperature: 0.2,
-          },
-        });
+          });
 
-        const rawJson = response.text || '';
-        const parsed = JSON.parse(rawJson);
+          const rawJson = response.text || '';
+          if (!rawJson) continue;
+          const parsed = JSON.parse(rawJson);
 
-        // Sanitize Mermaid code to ensure 100% render safety
-        const sanitizedMermaid = this.sanitizeMermaidCode(parsed.mermaidCode, diagramType, parsed.nodes);
+          // Sanitize Mermaid code to ensure 100% render safety
+          const sanitizedMermaid = this.sanitizeMermaidCode(parsed.mermaidCode, diagramType, parsed.nodes);
 
-        return {
-          title: parsed.title || 'Extracted Knowledge Map',
-          academicDomain: (parsed.academicDomain as AcademicDomain) || detectedDomain || 'GENERAL_ACADEMIC',
-          mermaidCode: sanitizedMermaid,
-          nodes: parsed.nodes || [],
-          cheatsheet: {
-            coreDefinitions: parsed.cheatsheet?.coreDefinitions || [],
-            keyFormulas: parsed.cheatsheet?.keyFormulas || [],
-            keyTakeaways: parsed.cheatsheet?.keyTakeaways || [],
-          },
-        };
-      } catch (err: any) {
-        console.warn('⚠️ Gemini live call failed or encountered rate limits. Using resilient knowledge generator:', err.message);
+          return {
+            title: parsed.title || 'Extracted Knowledge Map',
+            academicDomain: (parsed.academicDomain as AcademicDomain) || detectedDomain || 'GENERAL_ACADEMIC',
+            mermaidCode: sanitizedMermaid,
+            nodes: parsed.nodes || [],
+            cheatsheet: {
+              coreDefinitions: parsed.cheatsheet?.coreDefinitions || [],
+              keyFormulas: parsed.cheatsheet?.keyFormulas || [],
+              keyTakeaways: parsed.cheatsheet?.keyTakeaways || [],
+            },
+          };
+        } catch (err: any) {
+          console.warn(`⚠️ Gemini ${modelName} call failed (${err.status || err.message}). Trying next candidate...`);
+        }
       }
     }
 
@@ -213,15 +216,16 @@ Target Diagram Format: ${this.getDiagramPromptFormat(diagramType)}.`;
     questionCount: number = 5
   ): Promise<QuizQuestion[]> {
     if (isGeminiConfigured) {
-      try {
-        const response = await ai.models.generateContent({
-          model: GEMINI_MODEL_FAST,
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  text: `Generate a challenging ${questionCount}-question active recall multiple-choice quiz based on the following concepts and formulas from the knowledge map "${mapTitle}".
+      for (const modelName of CANDIDATE_GEMINI_MODELS) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  {
+                    text: `Generate a challenging ${questionCount}-question active recall multiple-choice quiz based on the following concepts and formulas from the knowledge map "${mapTitle}".
 Each question must test conceptual comprehension, not rote memorization.
 Link each question to the most relevant node ID.
 
@@ -230,25 +234,27 @@ ${JSON.stringify(nodes.slice(0, 15), null, 2)}
 
 DEFINITIONS & FORMULAS:
 ${JSON.stringify(cheatsheet, null, 2)}`,
-                },
-              ],
+                  },
+                ],
+              },
+            ],
+            config: {
+              systemInstruction: 'You are an expert university examiner creating high-retention active recall assessment questions.',
+              responseMimeType: 'application/json',
+              responseSchema: quizGenerationSchema,
+              temperature: 0.3,
             },
-          ],
-          config: {
-            systemInstruction: 'You are an expert university examiner creating high-retention active recall assessment questions.',
-            responseMimeType: 'application/json',
-            responseSchema: quizGenerationSchema,
-            temperature: 0.3,
-          },
-        });
+          });
 
-        const raw = response.text || '';
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.questions) && parsed.questions.length > 0) {
-          return parsed.questions;
+          const raw = response.text || '';
+          if (!raw) continue;
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+            return parsed.questions;
+          }
+        } catch (err: any) {
+          console.warn(`⚠️ Gemini quiz on ${modelName} failed (${err.status || err.message}). Trying next candidate...`);
         }
-      } catch (err: any) {
-        console.warn('⚠️ Gemini quiz generation fallback:', err.message);
       }
     }
 
@@ -317,30 +323,90 @@ ${JSON.stringify(cheatsheet, null, 2)}`,
     const firstPage = pages[0] || { page: 1, title: 'Document', content: '' };
     const docTitle = firstPage.title.replace(/^Slide \d+:\s*/i, '').replace(/^Page \d+:\s*/i, '');
 
-    const targetNodeCount = options.granularity === 'concise' ? 6 : options.granularity === 'detailed' ? 14 : 9;
+    const targetNodeCount = options.granularity === 'concise' ? 5 : options.granularity === 'detailed' ? 12 : 8;
 
-    // Build concepts from real extracted pages
-    const nodes: ConceptNode[] = [];
-    const usedPages = pages.slice(0, Math.min(pages.length, targetNodeCount));
+    // Build real concepts from all extracted pages and their text blocks
+    const candidateItems: { label: string; summary: string; page: number }[] = [];
 
-    usedPages.forEach((p, idx) => {
-      const id = `node${String.fromCharCode(65 + (idx % 26))}${idx >= 26 ? idx : ''}`;
-      const label = p.title.slice(0, 45).replace(/[\[\]\(\)\"]/g, '');
-      const summary = p.content.slice(0, 180).trim() || `Core conceptual foundation presented on slide ${p.page}.`;
-      nodes.push({
-        id,
-        label: label || `Concept ${idx + 1}`,
-        summary: `${summary} (Derived from slide ${p.page}).`,
-        sourceRefs: [p.page],
+    pages.forEach((p) => {
+      // 1. Clean page title
+      const pTitle = p.title
+        .replace(/^Slide \d+:\s*/i, '')
+        .replace(/^Page \d+:\s*/i, '')
+        .replace(/[\[\]\(\)\"]/g, '')
+        .trim();
+
+      if (
+        pTitle &&
+        pTitle.length >= 4 &&
+        !pTitle.toLowerCase().includes('reportlab') &&
+        !pTitle.includes('1 0 obj') &&
+        !candidateItems.some((it) => it.label.toLowerCase() === pTitle.toLowerCase())
+      ) {
+        candidateItems.push({
+          label: pTitle.slice(0, 45),
+          summary: p.content.slice(0, 200).trim(),
+          page: p.page,
+        });
+      }
+
+      // 2. Parse paragraphs, numbered questions/problems, or key sentences from content
+      const contentParts = p.content
+        .split(/(?:\r?\n){2,}|(?<=[.?!])\s+(?=[A-Z0-9])|(?=\b(?:Problem|Question|Q\d|Step|Section|Part|\d+[\.\)])\b)/i)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 20 && !s.includes('ReportLab') && !s.includes('CreationDate'));
+
+      contentParts.forEach((part) => {
+        const words = part.split(/\s+/).slice(0, 5).join(' ');
+        const label = words.replace(/[#*\-–:\[\]\(\)\"]/g, '').trim();
+        if (
+          label.length >= 4 &&
+          label.length <= 40 &&
+          !label.toLowerCase().includes('stream') &&
+          !candidateItems.some((it) => it.label.toLowerCase() === label.toLowerCase())
+        ) {
+          candidateItems.push({
+            label,
+            summary: part.slice(0, 220).trim(),
+            page: p.page,
+          });
+        }
       });
     });
 
+    // If candidate items were found from the document, use them!
+    const nodes: ConceptNode[] = [];
+    const chosenItems = candidateItems.slice(0, targetNodeCount);
+
+    if (chosenItems.length > 0) {
+      chosenItems.forEach((item, idx) => {
+        const id = `node${String.fromCharCode(65 + (idx % 26))}${idx >= 26 ? idx : ''}`;
+        nodes.push({
+          id,
+          label: item.label,
+          summary: item.summary ? `${item.summary} (Page ${item.page})` : `Key conceptual point for ${item.label}.`,
+          sourceRefs: [item.page],
+        });
+      });
+    }
+
+    // If still less than 3, construct concepts directly from docTitle
     if (nodes.length < 3) {
-      nodes.push(
-        { id: 'nodeA', label: 'Primary Architecture', summary: 'Foundational framework and domain mechanics.', sourceRefs: [1] },
-        { id: 'nodeB', label: 'Core Mechanism', summary: 'Algorithmic execution logic and state transitions.', sourceRefs: [1] },
-        { id: 'nodeC', label: 'Optimization & Analysis', summary: 'Performance guarantees and throughput characteristics.', sourceRefs: [1] }
-      );
+      const cleanTitle = docTitle.replace(/[-_]/g, ' ').trim() || 'Document';
+      const fallbackThemes = [
+        { label: `${cleanTitle} Overview`, desc: `Foundational principles and problem formulation for ${cleanTitle}.` },
+        { label: `${cleanTitle} Methodology`, desc: `Step-by-step conversion, calculation, or execution rules.` },
+        { label: `${cleanTitle} Practice Applications`, desc: `Practical problem solutions, edge cases, and verification.` }
+      ];
+      fallbackThemes.forEach((th, idx) => {
+        const id = `node${String.fromCharCode(65 + idx)}`;
+        nodes.push({
+          id,
+          label: th.label.slice(0, 45),
+          summary: th.desc,
+          sourceRefs: [1],
+        });
+      });
     }
 
     let mermaidCode = '';
@@ -378,37 +444,37 @@ ${JSON.stringify(cheatsheet, null, 2)}`,
       mermaidCode = `stateDiagram-v2\n${states}`;
     }
 
+    // Dynamic definitions from real extracted nodes
+    const coreDefinitions = nodes.slice(0, 4).map((n) => ({
+      term: n.label,
+      definition: n.summary.split('. ')[0] || `Key rule and principle in ${docTitle}.`,
+    }));
+
+    // Dynamic formula scanner from actual document content
+    const fullText = pages.map((p) => p.content).join(' ');
+    const formulaMatches = fullText.match(/([A-Za-z0-9_+\-*\/^= ]{3,25}\s*=\s*[A-Za-z0-9_+\-*\/^= ]{2,25})/g) || [];
+
+    const keyFormulas = formulaMatches.length > 0
+      ? formulaMatches.slice(0, 3).map((f, i) => ({
+          name: `Formula ${i + 1}`,
+          formula: f.trim(),
+          context: `Derived from ${docTitle}`,
+        }))
+      : [
+          {
+            name: `${docTitle} Formula`,
+            formula: domain === 'ENGINEERING_CS' ? 'Value = Sum(Digit_i * Radix^i)' : 'Efficiency = Output / Input',
+            context: `Mathematical representation for ${docTitle}.`,
+          },
+        ];
+
     const cheatsheet: CheatsheetData = {
-      coreDefinitions: [
-        {
-          term: nodes[0]?.label || 'System Model',
-          definition: `Core operational paradigm defining entities, transitions, and constraints within the study material.`,
-        },
-        {
-          term: 'Throughput & Efficiency',
-          definition: 'Metric quantifying effective work completed per unit time across operational cycles.',
-        },
-        {
-          term: 'Convergence Property',
-          definition: 'Mathematical assurance that iterative stages terminate at an optimal stable configuration.',
-        },
-      ],
-      keyFormulas: [
-        {
-          name: 'Average Efficiency Index',
-          formula: 'E = (Work_Completed / Total_Allocated_Time) * 100%',
-          context: 'Used to measure system utilization across algorithmic phases.',
-        },
-        {
-          name: 'Latency Ratio',
-          formula: 'L = Response_Time / Minimum_Feasible_Time',
-          context: 'Determines overhead introduced during state transitions.',
-        },
-      ],
+      coreDefinitions,
+      keyFormulas,
       keyTakeaways: [
-        `Mastery of ${docTitle} hinges on understanding transitions between early stages and optimization phases.`,
-        `Every node is mathematically grounded in lecture material referenced by source page indicators.`,
-        `Review the active recall quiz to verify retention of sequential algorithms.`,
+        `Mastery of ${docTitle} requires understanding the relationships between ${nodes.map((n) => n.label).slice(0, 3).join(', ')}.`,
+        `Refer to source slide references ${nodes.map((n) => n.sourceRefs[0]).join(', ')} for full theoretical context.`,
+        `Complete the active recall assessment to reinforce conceptual memory.`,
       ],
     };
 

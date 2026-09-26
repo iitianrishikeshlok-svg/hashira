@@ -3,6 +3,7 @@
 // Document Ingestion Pipeline for PDF & PPTX with Slide & Note Extraction
 // ============================================================================
 import JSZip from 'jszip';
+import zlib from 'zlib';
 import { createRequire } from 'module';
 import type { ExtractedPage, AcademicDomain } from '../../../shared/schema';
 
@@ -133,7 +134,7 @@ export class ParserService {
   }
 
   /**
-   * Extract pages and text from PDF using modern PDFParse or legacy fallback
+   * Extract pages and text from PDF using Mozilla pdfjs-dist, pdf-parse, or stream decompression
    */
   static async parsePdf(
     buffer: Buffer,
@@ -142,71 +143,139 @@ export class ParserService {
     try {
       const pages: ExtractedPage[] = [];
 
-      // 1. Modern pdf-parse v2 class (PDFParse)
-      if (pdfParsePkg && pdfParsePkg.PDFParse) {
-        const parser = new pdfParsePkg.PDFParse({ data: buffer });
-        const result = await parser.getText();
-        await parser.destroy().catch(() => {});
+      // Strategy 1: Mozilla pdfjs-dist (Pure JavaScript, FlateDecode support, handles all standard & ReportLab PDFs)
+      try {
+        const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+        const uint8Array = new Uint8Array(buffer);
+        const doc = await pdfjs.getDocument({
+          data: uint8Array,
+          useSystemFonts: true,
+          disableFontFace: true,
+        }).promise;
 
-        if (result && Array.isArray(result.pages) && result.pages.length > 0) {
-          result.pages.forEach((p: { text: string; num: number }, idx: number) => {
-            const text = (p.text || '').trim();
-            if (text.length > 0) {
-              const lines = text.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
-              const title = lines.length > 0 && lines[0].length < 120
-                ? lines[0]
-                : `Page ${p.num || idx + 1}: ${fileName.replace(/\.pdf$/i, '')}`;
+        const numPages = doc.numPages;
+        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+          const page = await doc.getPage(pageNum);
+          const textContent = await page.getTextContent();
 
-              pages.push({
-                page: p.num || idx + 1,
-                title,
-                content: lines.slice(1).join('\n') || text,
-              });
-            }
-          });
-        } else if (result && result.text) {
-          const rawPages = result.text.split(/\f|\x0c/).filter((p: string) => p.trim().length > 0);
-          rawPages.forEach((pageContent: string, idx: number) => {
-            const lines = pageContent.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
-            const title = lines.length > 0 && lines[0].length < 120
-              ? lines[0]
-              : `Page ${idx + 1}: ${fileName.replace(/\.pdf$/i, '')}`;
+          const rawItems = textContent.items
+            .map((item: any) => (item.str || '').trim())
+            .filter((str: string) => str.length > 0);
+
+          if (rawItems.length > 0) {
+            const fullText = rawItems.join(' ');
+            const titleCandidates = rawItems.filter(
+              (t: string) => t.length > 3 && t.length < 80 && !/^\d+$/.test(t) && !t.includes('1 0 obj')
+            );
+            const title = titleCandidates.length > 0
+              ? titleCandidates[0]
+              : `Page ${pageNum}: ${fileName.replace(/\.pdf$/i, '')}`;
 
             pages.push({
-              page: idx + 1,
+              page: pageNum,
               title,
-              content: lines.slice(1).join('\n') || pageContent,
+              content: fullText,
             });
-          });
+          }
         }
-      } else if (typeof pdfParsePkg === 'function') {
-        // 2. Legacy pdf-parse v1
-        const data = await pdfParsePkg(buffer);
-        const rawText = data.text || '';
-        const rawPages = rawText.split(/\f|\x0c/).filter((p: string) => p.trim().length > 0);
-        rawPages.forEach((pageContent: string, idx: number) => {
-          const lines = pageContent.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
-          const title = lines.length > 0 && lines[0].length < 120
-            ? lines[0]
-            : `Page ${idx + 1}: ${fileName.replace(/\.pdf$/i, '')}`;
-
-          pages.push({
-            page: idx + 1,
-            title,
-            content: lines.slice(1).join('\n') || pageContent,
-          });
-        });
+      } catch (pdfjsErr: any) {
+        console.warn('pdfjs-dist extraction note:', pdfjsErr?.message || pdfjsErr);
       }
 
-      // 3. Fallback if no pages were parsed
+      // Strategy 2: pdf-parse v2 (if available)
+      if (pages.length === 0 && pdfParsePkg) {
+        try {
+          if (pdfParsePkg.PDFParse) {
+            const parser = new pdfParsePkg.PDFParse({ data: buffer });
+            const result = await parser.getText();
+            await parser.destroy().catch(() => {});
+
+            if (result && Array.isArray(result.pages) && result.pages.length > 0) {
+              result.pages.forEach((p: { text: string; num: number }, idx: number) => {
+                const text = (p.text || '').trim();
+                if (text.length > 0) {
+                  const lines = text.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+                  const title = lines.length > 0 && lines[0].length < 100
+                    ? lines[0]
+                    : `Page ${p.num || idx + 1}: ${fileName.replace(/\.pdf$/i, '')}`;
+
+                  pages.push({
+                    page: p.num || idx + 1,
+                    title,
+                    content: lines.slice(1).join('\n') || text,
+                  });
+                }
+              });
+            }
+          } else if (typeof pdfParsePkg === 'function') {
+            const data = await pdfParsePkg(buffer);
+            const rawText = data.text || '';
+            const rawPages = rawText.split(/\f|\x0c/).filter((p: string) => p.trim().length > 0);
+            rawPages.forEach((pageContent: string, idx: number) => {
+              const lines = pageContent.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+              pages.push({
+                page: idx + 1,
+                title: lines[0] || `Page ${idx + 1}: ${fileName.replace(/\.pdf$/i, '')}`,
+                content: lines.slice(1).join('\n') || pageContent,
+              });
+            });
+          }
+        } catch (e: any) {
+          // continue to next strategy
+        }
+      }
+
+      // Strategy 3: Flate stream decompressor for binary PDFs (ReportLab / Acrobat)
+      if (pages.length === 0) {
+        try {
+          const bufferStr = buffer.toString('binary');
+          const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/gi;
+          let match;
+          const textTokens: string[] = [];
+
+          while ((match = streamRegex.exec(bufferStr)) !== null) {
+            try {
+              const compressedBytes = Buffer.from(match[1], 'binary');
+              const decompressed = zlib.inflateSync(compressedBytes).toString('utf-8');
+              const textMatches = decompressed.match(/\(([^)]+)\)\s*Tj/g);
+              if (textMatches) {
+                const chunk = textMatches.map((m: string) => m.replace(/^\(|\)\s*Tj$/g, '')).join(' ');
+                if (chunk.trim().length > 10) textTokens.push(chunk.trim());
+              }
+            } catch (zlibErr) {
+              // Not a compressed stream
+            }
+          }
+
+          if (textTokens.length > 0) {
+            pages.push({
+              page: 1,
+              title: fileName.replace(/\.pdf$/i, '').replace(/[-_]/g, ' '),
+              content: textTokens.join('\n\n'),
+            });
+          }
+        } catch (streamErr) {
+          // ignore
+        }
+      }
+
+      // Strategy 4: Clean text fallback (STRICTLY filter out raw PDF dictionary headers)
       if (pages.length === 0) {
         const rawString = buffer.toString('utf-8');
-        const textSnippets = rawString.match(/[A-Za-z0-9 ,.;:!?'"()\-\n]{30,}/g) || [];
-        const content = textSnippets.slice(0, 50).join('\n') || 'Academic document contents ingested for extraction.';
+        const cleanLines = rawString
+          .replace(/%PDF[\s\S]*?obj/gi, '')
+          .replace(/<<[\s\S]*?>>/gi, '')
+          .replace(/endobj/gi, '')
+          .replace(/xref[\s\S]*?trailer/gi, '')
+          .split('\n')
+          .map((l) => l.trim())
+          .filter((l) => l.length > 15 && !l.includes('ReportLab') && !l.includes('Producer') && !l.includes('CreationDate'));
+
+        const meaningfulText = cleanLines.slice(0, 40).join('\n');
         pages.push({
           page: 1,
-          title: fileName.replace(/\.pdf$/i, ''),
-          content,
+          title: fileName.replace(/\.pdf$/i, '').replace(/[-_]/g, ' '),
+          content: meaningfulText || `Academic study material: ${fileName.replace(/\.pdf$/i, '')}`,
         });
       }
 
