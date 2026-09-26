@@ -9,10 +9,17 @@ dotenv.config();
 
 const apiKey = process.env.GEMINI_API_KEY || '';
 
-export const isGeminiConfigured = Boolean(apiKey && apiKey.trim().length > 0 && !apiKey.includes('...'));
+export const isGeminiConfigured = Boolean(
+  apiKey &&
+  apiKey.trim().length >= 20 &&
+  !apiKey.includes('...') &&
+  !apiKey.includes('your_') &&
+  apiKey !== '++' &&
+  !apiKey.startsWith('++')
+);
 
 export const ai = isGeminiConfigured
-  ? new GoogleGenAI({ apiKey })
+  ? new GoogleGenAI({ apiKey: apiKey.trim() })
   : new GoogleGenAI({ apiKey: 'dummy-key-for-initialization' });
 
 // Default models to use across system
