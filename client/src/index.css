@@ -58,9 +58,26 @@ body {
 }
 
 /* Mermaid SVG Enhancements */
+.mermaid-container {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  min-width: 850px;
+  min-height: 540px;
+  padding: 2rem;
+  margin: 0 auto;
+}
+
 .mermaid-container svg {
-  max-width: none !important;
+  display: block !important;
+  margin: 0 auto !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 600px !important;
+  max-width: 96% !important;
   font-family: 'Plus Jakarta Sans', sans-serif !important;
+  filter: drop-shadow(0 15px 35px rgba(0, 0, 0, 0.45));
 }
 
 .mermaid-container .node {

@@ -77,7 +77,9 @@ export const MermaidViewer: React.FC<MermaidViewerProps> = ({
         // Render via mermaid.render
         const { svg } = await mermaid.render(uniqueId, cleanCode);
         if (isMounted) {
-          setSvgHtml(svg);
+          // Unconstrain inline max-width so the diagram expands across the canvas
+          const processedSvg = svg.replace(/style="max-width:[^"]*"/gi, '');
+          setSvgHtml(processedSvg);
         }
       } catch (err: any) {
         console.error('Mermaid render error:', err);
@@ -87,7 +89,7 @@ export const MermaidViewer: React.FC<MermaidViewerProps> = ({
           try {
             const fallbackCode = `flowchart TD\n  nodeA["Overview: Study Unit"] --> nodeB["Core Architecture"]\n  nodeB --> nodeC["Detailed Mechanics"]`;
             const { svg } = await mermaid.render(`mermaid-fallback-${Date.now()}`, fallbackCode);
-            setSvgHtml(svg);
+            setSvgHtml(svg.replace(/style="max-width:[^"]*"/gi, ''));
           } catch {
             setSvgHtml('');
           }
@@ -197,28 +199,28 @@ export const MermaidViewer: React.FC<MermaidViewerProps> = ({
       )}
 
       {/* TransformWrapper for Smooth Pan & Zoom */}
-      <div className="relative flex-1 bg-gradient-to-b from-[#060a12] via-[#090d16] to-[#04070e] overflow-hidden">
+      <div className="relative flex-1 bg-gradient-to-b from-[#060a12] via-[#090d16] to-[#04070e] overflow-hidden flex items-center justify-center">
         <TransformWrapper
-          initialScale={0.88}
-          minScale={0.2}
-          maxScale={4}
+          initialScale={1}
+          minScale={0.15}
+          maxScale={5}
           centerOnInit
           limitToBounds={false}
-          wheel={{ step: 0.15 }}
+          wheel={{ step: 0.12 }}
         >
           {({ zoomIn, zoomOut, resetTransform }) => (
             <>
               {/* Floating Pan/Zoom Control HUD */}
-              <div className="absolute bottom-4 left-4 z-20 flex items-center space-x-1 rounded-xl border border-slate-800/80 bg-slate-900/80 p-1.5 backdrop-blur-xl shadow-xl">
+              <div className="absolute bottom-4 left-4 z-20 flex items-center space-x-1.5 rounded-xl border border-slate-800/90 bg-slate-900/90 p-1.5 backdrop-blur-xl shadow-2xl">
                 <button
-                  onClick={() => zoomIn()}
+                  onClick={() => zoomIn(0.25)}
                   className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
                   title="Zoom In"
                 >
                   <ZoomIn className="h-4 w-4" />
                 </button>
                 <button
-                  onClick={() => zoomOut()}
+                  onClick={() => zoomOut(0.25)}
                   className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
                   title="Zoom Out"
                 >
@@ -226,27 +228,28 @@ export const MermaidViewer: React.FC<MermaidViewerProps> = ({
                 </button>
                 <button
                   onClick={() => resetTransform()}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
-                  title="Reset Scale"
+                  className="flex items-center space-x-1 px-2.5 h-8 rounded-lg text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                  title="Fit to Center / 100%"
                 >
-                  <RotateCcw className="h-4 w-4" />
+                  <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                  <span>Fit / Center</span>
                 </button>
                 <div className="h-4 w-[1px] bg-slate-800 mx-1" />
                 <div className="flex items-center space-x-1 px-1.5 text-[11px] text-slate-400">
                   <Move className="h-3 w-3" />
-                  <span className="hidden sm:inline">Drag to Pan</span>
+                  <span className="hidden sm:inline">Drag to Pan • Scroll to Zoom</span>
                 </div>
               </div>
 
               {/* Mermaid Canvas Area */}
               <TransformComponent
-                wrapperClass="w-full h-full cursor-grab active:cursor-grabbing"
-                contentClass="w-full h-full flex items-center justify-center p-8"
+                wrapperClass="w-full h-full cursor-grab active:cursor-grabbing flex items-center justify-center"
+                contentClass="flex items-center justify-center min-w-full min-h-full p-8"
               >
                 <div
                   ref={containerRef}
                   id="visualmind-mermaid-viewport"
-                  className="mermaid-container select-none"
+                  className="mermaid-container select-none flex items-center justify-center"
                   dangerouslySetInnerHTML={{ __html: svgHtml }}
                 />
               </TransformComponent>

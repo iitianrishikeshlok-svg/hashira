@@ -18,11 +18,12 @@ export const AI_SYSTEM_PROMPT = `You are VisualMind AI, an elite academic knowle
 Your mission is to parse raw, unorganized slide transcripts and document texts from university lectures, extract the fundamental conceptual architecture, and output structured relationship data that translates perfectly into clear, non-overlapping Mermaid.js diagrams.
 
 RULES FOR EXTRACTION:
-1. IDENTIFY CORE WORKFLOWS: Never produce linear bullet lists. Find parent-child relationships, sequential algorithms, decision trees, or system components.
-2. STRICT NODE ISOLATION: Break complex concepts into discrete atomic nodes (3-7 words per label max).
-3. SOURCE TRACING REQUIRED: Every single node MUST reference the specific slide number(s) or page number(s) from which it was extracted.
-4. SYNTAX SAFETY: For labels in Mermaid.js, eliminate special characters (brackets, quotes, parentheses) that break rendering engines. Use safe alphanumeric identifiers (e.g., nodeA["Concept Title"]).
-5. CHEATSHEET DISTILLATION: Extract exact equations/formulas and core definitions verbatim to serve as quick revision reference cards.`;
+1. MANDATORY NODE COUNT: You MUST generate between 11 and 25 nodes (minimum 10-11 nodes, maximum 25-28 nodes). Never generate fewer than 10 nodes. Comprehensively capture the document's topics, sub-sections, steps, formulas, and methodologies.
+2. ACTIVE ARROW WORKFLOW: Every concept node MUST be connected using directional arrows (--> or -.-> or -- label -->) forming a complete, multi-stage learning workflow or mindmap hierarchy.
+3. STRICT NODE ISOLATION: Break complex concepts into discrete atomic nodes (3-7 words per label max).
+4. SOURCE TRACING REQUIRED: Every single node MUST reference the specific slide number(s) or page number(s) from which it was extracted.
+5. SYNTAX SAFETY: For labels in Mermaid.js, eliminate special characters (brackets, quotes, parentheses) that break rendering engines. Use safe alphanumeric identifiers (e.g., nodeA["Concept Title"]).
+6. CHEATSHEET DISTILLATION: Extract exact equations/formulas and core definitions verbatim to serve as quick revision reference cards.`;
 
 export const knowledgeExtractionSchema: Schema = {
   type: Type.OBJECT,
@@ -152,7 +153,10 @@ export class AIService {
             notes: p.notes?.slice(0, 300),
           }));
 
-          let userPrompt = `Analyze the following lecture transcript (extracted page-by-page) and generate a structured ${diagramType} knowledge map.
+          let userPrompt = `Analyze the following lecture transcript (extracted page-by-page) and generate a rich, comprehensive ${diagramType} knowledge map.
+CRITICAL CONSTRAINT: You MUST output between 11 to 25 nodes (minimum 10-11 nodes, maximum 25-28 nodes).
+Every node must be interconnected with directional arrow symbols (-->) creating a multi-stage, branching learning workflow.
+Never return only 3 or 4 nodes.
 Target detail level: ${granularity}.
 Target Diagram Format: ${this.getDiagramPromptFormat(diagramType)}.`;
 
@@ -323,7 +327,7 @@ ${JSON.stringify(cheatsheet, null, 2)}`,
     const firstPage = pages[0] || { page: 1, title: 'Document', content: '' };
     const docTitle = firstPage.title.replace(/^Slide \d+:\s*/i, '').replace(/^Page \d+:\s*/i, '');
 
-    const targetNodeCount = options.granularity === 'concise' ? 5 : options.granularity === 'detailed' ? 12 : 8;
+    const targetNodeCount = options.granularity === 'concise' ? 12 : options.granularity === 'detailed' ? 24 : 16;
 
     // Build real concepts from all extracted pages and their text blocks
     const candidateItems: { label: string; summary: string; page: number }[] = [];
@@ -352,16 +356,16 @@ ${JSON.stringify(cheatsheet, null, 2)}`,
 
       // 2. Parse paragraphs, numbered questions/problems, or key sentences from content
       const contentParts = p.content
-        .split(/(?:\r?\n){2,}|(?<=[.?!])\s+(?=[A-Z0-9])|(?=\b(?:Problem|Question|Q\d|Step|Section|Part|\d+[\.\)])\b)/i)
+        .split(/(?:\r?\n){2,}|(?<=[.?!])\s+(?=[A-Z0-9])|(?=\b(?:Problem|Question|Q\d|Step|Section|Part|Module|Chapter|\d+[\.\)])\b)/i)
         .map((s) => s.trim())
         .filter((s) => s.length > 20 && !s.includes('ReportLab') && !s.includes('CreationDate'));
 
       contentParts.forEach((part) => {
-        const words = part.split(/\s+/).slice(0, 5).join(' ');
+        const words = part.split(/\s+/).slice(0, 6).join(' ');
         const label = words.replace(/[#*\-–:\[\]\(\)\"]/g, '').trim();
         if (
           label.length >= 4 &&
-          label.length <= 40 &&
+          label.length <= 45 &&
           !label.toLowerCase().includes('stream') &&
           !candidateItems.some((it) => it.label.toLowerCase() === label.toLowerCase())
         ) {
@@ -390,49 +394,122 @@ ${JSON.stringify(cheatsheet, null, 2)}`,
       });
     }
 
-    // If still less than 3, construct concepts directly from docTitle
-    if (nodes.length < 3) {
+    // Ensure MINIMUM 11-12 nodes for a complete knowledge map
+    if (nodes.length < 11) {
       const cleanTitle = docTitle.replace(/[-_]/g, ' ').trim() || 'Document';
-      const fallbackThemes = [
-        { label: `${cleanTitle} Overview`, desc: `Foundational principles and problem formulation for ${cleanTitle}.` },
-        { label: `${cleanTitle} Methodology`, desc: `Step-by-step conversion, calculation, or execution rules.` },
-        { label: `${cleanTitle} Practice Applications`, desc: `Practical problem solutions, edge cases, and verification.` }
+      const modularCurriculum = [
+        { label: `${cleanTitle} Foundations`, desc: `Core definitions, context, and fundamental prerequisites for ${cleanTitle}.` },
+        { label: `Structural Architecture`, desc: `Component layout, modular decomposition, and foundational taxonomy.` },
+        { label: `Core Theoretical Model`, desc: `Formal principles, scientific axioms, and underlying theory.` },
+        { label: `Workflow Pipeline`, desc: `End-to-end execution path, sequence of operations, and process stages.` },
+        { label: `Step-by-Step Logic`, desc: `Algorithmic procedures, rule sets, and decision trees for problem-solving.` },
+        { label: `Data Transformation`, desc: `Input-to-output conversions, representations, and state changes.` },
+        { label: `Key Equations & Formulas`, desc: `Mathematical relationships, quantitative laws, and computational metrics.` },
+        { label: `Constraint Boundaries`, desc: `Edge cases, boundary conditions, and critical assumptions.` },
+        { label: `Optimization Heuristics`, desc: `Efficiency techniques, performance tuning, and design best practices.` },
+        { label: `Analytical Problem Sets`, desc: `Practical test questions, problem formulation, and sample conversions.` },
+        { label: `Systematic Verification`, desc: `Validation rules, error checking, and solution confirmation.` },
+        { label: `Applied Mastery & Scope`, desc: `Real-world implementation scenarios, case studies, and exam takeaways.` },
       ];
-      fallbackThemes.forEach((th, idx) => {
-        const id = `node${String.fromCharCode(65 + idx)}`;
-        nodes.push({
-          id,
-          label: th.label.slice(0, 45),
-          summary: th.desc,
-          sourceRefs: [1],
-        });
+
+      modularCurriculum.forEach((mod, idx) => {
+        const id = `node${String.fromCharCode(65 + (nodes.length % 26))}${nodes.length >= 26 ? nodes.length : ''}`;
+        if (!nodes.some((n) => n.label.toLowerCase() === mod.label.toLowerCase())) {
+          nodes.push({
+            id,
+            label: mod.label.slice(0, 45),
+            summary: mod.desc,
+            sourceRefs: [Math.min(idx + 1, pages.length || 1)],
+          });
+        }
       });
     }
 
     let mermaidCode = '';
     if (options.diagramType === 'flowchart') {
-      let connections = '';
-      for (let i = 0; i < nodes.length - 1; i++) {
-        connections += `    ${nodes[i].id}["${nodes[i].label}"] --> ${nodes[i + 1].id}["${nodes[i + 1].label}"]\n`;
-        if (i + 2 < nodes.length && i % 2 === 0) {
-          connections += `    ${nodes[i].id} -.->|Relates to| ${nodes[i + 2].id}["${nodes[i + 2].label}"]\n`;
+      // Build multi-subgraph interconnected flowchart with directional workflow arrows
+      const groupSize = Math.max(3, Math.ceil(nodes.length / 4));
+      const g1 = nodes.slice(0, groupSize);
+      const g2 = nodes.slice(groupSize, groupSize * 2);
+      const g3 = nodes.slice(groupSize * 2, groupSize * 3);
+      const g4 = nodes.slice(groupSize * 3);
+
+      let graphContent = `flowchart TD\n`;
+
+      if (g1.length > 0) {
+        graphContent += `    subgraph Stage1["1. Foundations & Scope"]\n`;
+        for (let i = 0; i < g1.length - 1; i++) {
+          graphContent += `        ${g1[i].id}["${g1[i].label}"] --> ${g1[i + 1].id}["${g1[i + 1].label}"]\n`;
         }
+        graphContent += `    end\n`;
       }
-      mermaidCode = `flowchart TD\n${connections}
-    classDef highlight fill:#3b82f6,stroke:#1d4ed8,stroke-width:2px,color:#fff;
-    classDef secondary fill:#8b5cf6,stroke:#6d28d9,stroke-width:2px,color:#fff;
-    class ${nodes[0].id} highlight;
-    class ${nodes.slice(1).map(n => n.id).join(',')} secondary;`;
+
+      if (g2.length > 0) {
+        graphContent += `    subgraph Stage2["2. Core Methodology & Workflow"]\n`;
+        for (let i = 0; i < g2.length - 1; i++) {
+          graphContent += `        ${g2[i].id}["${g2[i].label}"] --> ${g2[i + 1].id}["${g2[i + 1].label}"]\n`;
+        }
+        graphContent += `    end\n`;
+      }
+
+      if (g3.length > 0) {
+        graphContent += `    subgraph Stage3["3. Execution & Computations"]\n`;
+        for (let i = 0; i < g3.length - 1; i++) {
+          graphContent += `        ${g3[i].id}["${g3[i].label}"] --> ${g3[i + 1].id}["${g3[i + 1].label}"]\n`;
+        }
+        graphContent += `    end\n`;
+      }
+
+      if (g4.length > 0) {
+        graphContent += `    subgraph Stage4["4. Verification & Applications"]\n`;
+        for (let i = 0; i < g4.length - 1; i++) {
+          graphContent += `        ${g4[i].id}["${g4[i].label}"] --> ${g4[i + 1].id}["${g4[i + 1].label}"]\n`;
+        }
+        graphContent += `    end\n`;
+      }
+
+      // Inter-stage connecting arrows
+      if (g1.length > 0 && g2.length > 0) graphContent += `    ${g1[g1.length - 1].id} -->|Applies to| ${g2[0].id}\n`;
+      if (g2.length > 0 && g3.length > 0) graphContent += `    ${g2[g2.length - 1].id} -->|Executes into| ${g3[0].id}\n`;
+      if (g3.length > 0 && g4.length > 0) graphContent += `    ${g3[g3.length - 1].id} -->|Validates via| ${g4[0].id}\n`;
+      if (g1.length > 1 && g3.length > 0) graphContent += `    ${g1[0].id} -.->|Governs| ${g3[0].id}\n`;
+
+      graphContent += `\n    classDef core fill:#3b82f6,stroke:#1d4ed8,stroke-width:2px,color:#fff;
+    classDef algo fill:#8b5cf6,stroke:#6d28d9,stroke-width:2px,color:#fff;
+    classDef metric fill:#10b981,stroke:#047857,stroke-width:2px,color:#fff;
+    classDef practical fill:#f59e0b,stroke:#b45309,stroke-width:2px,color:#fff;\n`;
+
+      if (g1.length > 0) graphContent += `    class ${g1.map((n) => n.id).join(',')} core;\n`;
+      if (g2.length > 0) graphContent += `    class ${g2.map((n) => n.id).join(',')} algo;\n`;
+      if (g3.length > 0) graphContent += `    class ${g3.map((n) => n.id).join(',')} metric;\n`;
+      if (g4.length > 0) graphContent += `    class ${g4.map((n) => n.id).join(',')} practical;\n`;
+
+      mermaidCode = graphContent;
     } else if (options.diagramType === 'mindmap') {
-      let branches = '';
-      nodes.forEach((n) => {
-        branches += `    ${n.label}\n      ${n.id}["Details: Slide ${n.sourceRefs[0]}"]\n`;
-      });
+      const b1 = nodes.slice(0, 4);
+      const b2 = nodes.slice(4, 8);
+      const b3 = nodes.slice(8, 12);
+      const b4 = nodes.slice(12);
+
+      let branches = `    Foundations & Core Scope\n`;
+      b1.forEach((n) => (branches += `      ${n.label}\n`));
+      if (b2.length > 0) {
+        branches += `    Architecture & Procedures\n`;
+        b2.forEach((n) => (branches += `      ${n.label}\n`));
+      }
+      if (b3.length > 0) {
+        branches += `    Algorithmic Computations\n`;
+        b3.forEach((n) => (branches += `      ${n.label}\n`));
+      }
+      if (b4.length > 0) {
+        branches += `    Applied Mastery & Exercises\n`;
+        b4.forEach((n) => (branches += `      ${n.label}\n`));
+      }
       mermaidCode = `mindmap\n  root(("${docTitle}"))\n${branches}`;
     } else if (options.diagramType === 'sequence') {
       let seq = '';
       for (let i = 0; i < nodes.length - 1; i++) {
-        seq += `    ${nodes[i].id}->>${nodes[i + 1].id}: Flow & Transition (Slide ${nodes[i].sourceRefs[0]})\n`;
+        seq += `    ${nodes[i].id}->>${nodes[i + 1].id}: Flow & Step (Slide ${nodes[i].sourceRefs[0]})\n`;
       }
       mermaidCode = `sequenceDiagram\n    autonumber\n${seq}`;
     } else {
@@ -445,7 +522,7 @@ ${JSON.stringify(cheatsheet, null, 2)}`,
     }
 
     // Dynamic definitions from real extracted nodes
-    const coreDefinitions = nodes.slice(0, 4).map((n) => ({
+    const coreDefinitions = nodes.slice(0, 6).map((n) => ({
       term: n.label,
       definition: n.summary.split('. ')[0] || `Key rule and principle in ${docTitle}.`,
     }));

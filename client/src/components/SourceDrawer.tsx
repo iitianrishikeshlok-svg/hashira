@@ -122,8 +122,12 @@ export const SourceDrawer: React.FC<SourceDrawerProps> = ({
 
                 {/* Excerpt Body */}
                 <div className="relative pl-3 border-l-2 border-indigo-500/50 mb-3">
-                  <p className="text-xs text-slate-300 leading-relaxed font-mono whitespace-pre-line text-[11.5px]">
-                    {page.content}
+                  <p className="text-xs text-slate-300 leading-relaxed font-sans whitespace-pre-line text-[12px]">
+                    {page.content
+                      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, ' ')
+                      .replace(/\/StructParent[^\n]*/gi, '')
+                      .replace(/\[\s*(?:[A-Za-z0-9&%]\s+){6,}[A-Za-z0-9&%]?\s*\]/g, '')
+                      .trim() || 'Conceptual lecture material extracted from slide.'}
                   </p>
                 </div>
 
