@@ -4,7 +4,7 @@
 // ============================================================================
 import JSZip from 'jszip';
 import zlib from 'zlib';
-import { PDFParse } from 'pdf-parse';
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import type { ExtractedPage, AcademicDomain } from '../../../shared/schema';
 
 export class ParserService {
@@ -155,69 +155,70 @@ export class ParserService {
     try {
       const pages: ExtractedPage[] = [];
 
-      // Strategy 1: Modern pure-JS PDFParse engine (handles compressed, flate streams, standard PDFs)
+      // Strategy 1: Mozilla pdfjs-dist (Pure JavaScript, FlateDecode support, 0 native dependencies, Vercel safe)
       try {
-        const parser = new PDFParse({ data: buffer });
-        const result = await parser.getText();
-        await parser.destroy().catch(() => {});
+        const uint8Array = new Uint8Array(buffer);
+        const doc = await pdfjs.getDocument({
+          data: uint8Array,
+          useSystemFonts: true,
+          disableFontFace: true,
+        }).promise;
 
-        if (result && Array.isArray(result.pages) && result.pages.length > 0) {
-          result.pages.forEach((p, idx) => {
-            const raw = (p.text || '').trim();
-            const clean = ParserService.sanitizeExtractedText(raw);
+        const numPages = doc.numPages;
+        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+          const page = await doc.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          const rawItems = textContent.items
+            .map((item: any) => (item.str || '').trim())
+            .filter((str: string) => str.length > 0);
+
+          if (rawItems.length > 0) {
+            const rawText = rawItems.join(' ');
+            const clean = ParserService.sanitizeExtractedText(rawText);
             if (clean.length > 10) {
-              const lines = clean.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
-              const title = lines.length > 0 && lines[0].length < 90
-                ? lines[0].replace(/[#*_\-\[\]]/g, '').trim()
-                : `Page ${p.num || idx + 1}: ${fileName.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ')}`;
-
+              const titleCandidates = rawItems.filter(
+                (t: string) => t.length > 3 && t.length < 80 && !/^\d+$/.test(t)
+              );
               pages.push({
-                page: p.num || idx + 1,
-                title: title || `Page ${p.num || idx + 1}`,
+                page: pageNum,
+                title: titleCandidates[0] || `Page ${pageNum}: ${fileName.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ')}`,
                 content: clean,
               });
             }
-          });
+          }
         }
-      } catch (pdfParseErr: any) {
-        console.warn('PDFParse primary extraction note:', pdfParseErr?.message || pdfParseErr);
+      } catch (pdfjsErr: any) {
+        console.warn('pdfjs-dist extraction note:', pdfjsErr?.message || pdfjsErr);
       }
 
-      // Strategy 2: Mozilla pdfjs-dist fallback
+      // Strategy 2: pdf-parse fallback (lazy-loaded so missing native canvas doesn't crash serverless function)
       if (pages.length === 0) {
         try {
-          const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-          const uint8Array = new Uint8Array(buffer);
-          const doc = await pdfjs.getDocument({
-            data: uint8Array,
-            useSystemFonts: true,
-            disableFontFace: true,
-          }).promise;
+          const { PDFParse } = await import('pdf-parse');
+          const parser = new PDFParse({ data: buffer });
+          const result = await parser.getText();
+          await parser.destroy().catch(() => {});
 
-          for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
-            const page = await doc.getPage(pageNum);
-            const textContent = await page.getTextContent();
-            const rawItems = textContent.items
-              .map((item: any) => (item.str || '').trim())
-              .filter((str: string) => str.length > 0);
-
-            if (rawItems.length > 0) {
-              const rawText = rawItems.join(' ');
-              const clean = ParserService.sanitizeExtractedText(rawText);
+          if (result && Array.isArray(result.pages) && result.pages.length > 0) {
+            result.pages.forEach((p, idx) => {
+              const raw = (p.text || '').trim();
+              const clean = ParserService.sanitizeExtractedText(raw);
               if (clean.length > 10) {
-                const titleCandidates = rawItems.filter(
-                  (t: string) => t.length > 3 && t.length < 80 && !/^\d+$/.test(t)
-                );
+                const lines = clean.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+                const title = lines.length > 0 && lines[0].length < 90
+                  ? lines[0].replace(/[#*_\-\[\]]/g, '').trim()
+                  : `Page ${p.num || idx + 1}: ${fileName.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ')}`;
+
                 pages.push({
-                  page: pageNum,
-                  title: titleCandidates[0] || `Page ${pageNum}: ${fileName.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ')}`,
+                  page: p.num || idx + 1,
+                  title: title || `Page ${p.num || idx + 1}`,
                   content: clean,
                 });
               }
-            }
+            });
           }
-        } catch (pdfjsErr: any) {
-          console.warn('pdfjs-dist fallback note:', pdfjsErr?.message || pdfjsErr);
+        } catch (pdfParseErr: any) {
+          console.warn('PDFParse fallback note:', pdfParseErr?.message || pdfParseErr);
         }
       }
 

@@ -61,7 +61,14 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-if (!process.env.VERCEL) {
+const isServerless = Boolean(
+  process.env.VERCEL ||
+  process.env.VERCEL_ENV ||
+  process.env.AWS_LAMBDA_FUNCTION_NAME ||
+  process.env.LAMBDA_TASK_ROOT
+);
+
+if (!isServerless) {
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
 
   app.listen(PORT, '0.0.0.0', () => {
@@ -75,9 +82,5 @@ if (!process.env.VERCEL) {
   });
 }
 
-const handler = (req: any, res: any) => {
-  return app(req, res);
-};
-
 export { app };
-export default handler;
+export default app;
